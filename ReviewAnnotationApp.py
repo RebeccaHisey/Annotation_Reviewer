@@ -9,6 +9,7 @@ import math
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QSpacerItem,QFileDialog,QTabWidget,QComboBox,QCheckBox,QSlider
 from PyQt6.QtGui import QImage,QPixmap,QShortcut,QKeySequence
+from superqt import QRangeSlider
 class AnnotationReviewer:
     def addWidgetsToWindow(self,window):
         self.mainWindow = window
@@ -159,14 +160,7 @@ class AnnotationReviewer:
     def setupDetectionToolLayout(self, layout):
         self.step1Widget = QWidget()
         self.createStep1Widget()
-        self.step2Widget = QWidget()
-        self.createStep2Widget()
-        self.step3Widget = QWidget()
-        self.createStep3Widget()
-
         layout.addWidget(self.step1Widget)
-        layout.addWidget(self.step2Widget)
-        layout.addWidget(self.step3Widget)
 
     def setupSegmentationToolLayout(self,layout):
         self.segmentationLabel = QLabel()
@@ -212,15 +206,43 @@ class AnnotationReviewer:
         self.fliplabelsVButton = QPushButton("Flip boxes vertically")
         self.fliplabelsHButton = QPushButton("Flip boxes horizontally")
         self.swapXandYButton = QPushButton("Swap X and Y coordinates")
+        self.applyPreviousBoxesButton = QPushButton("Apply previous boxes")
         self.acceptDetectionLayout = QHBoxLayout()
         self.acceptButton = QPushButton("Accept All")
-        self.rejectButton = QPushButton("Next step")
+        self.rejectButton = QPushButton("Delete current box")
         self.acceptDetectionLayout.addWidget(self.acceptButton)
         self.acceptDetectionLayout.addWidget(self.rejectButton)
         step1Layout.addWidget(self.instructionLabel)
         step1Layout.addWidget(self.fliplabelsVButton)
         step1Layout.addWidget(self.fliplabelsHButton)
         step1Layout.addWidget(self.swapXandYButton)
+        step1Layout.addWidget(self.applyPreviousBoxesButton)
+
+        self.detectionStep3Layout = QGridLayout()
+        self.currentBoxSelectorLabel = QLabel("Current box")
+        self.detectionStep3Layout.addWidget(self.currentBoxSelectorLabel, 1, 0)
+        self.currentBoxSelector = QComboBox()
+        self.detectionStep3Layout.addWidget(self.currentBoxSelector, 1, 1)
+
+        self.xCoordinateSliderLabel = QLabel("X coordinates")
+        self.detectionStep3Layout.addWidget(self.xCoordinateSliderLabel, 2, 0)
+        self.xCoordinateSlider = QRangeSlider(Qt.Orientation.Horizontal)
+        self.xCoordinateSlider.setMinimum(0)
+        self.xCoordinateSlider.setMaximum(self.imgShape[1])
+        self.detectionStep3Layout.addWidget(self.xCoordinateSlider, 2, 1)
+
+        self.yCoordinateSliderLabel = QLabel("Y coordinates")
+        self.detectionStep3Layout.addWidget(self.yCoordinateSliderLabel, 3, 0)
+        self.yCoordinateSlider = QRangeSlider()
+        self.yCoordinateSlider.setMinimum(0)
+        self.yCoordinateSlider.setMaximum(self.imgShape[0])
+        self.detectionStep3Layout.addWidget(self.yCoordinateSlider, 3, 1)
+
+        self.addNewBoxButton = QPushButton("Add new box")
+        self.detectionStep3Layout.addWidget(self.addNewBoxButton,4,0)
+        self.addNewBoxSelector = QComboBox()
+        self.detectionStep3Layout.addWidget(self.addNewBoxSelector,4,1)
+        step1Layout.addLayout(self.detectionStep3Layout)
         step1Layout.addLayout(self.acceptDetectionLayout)
         self.step1Widget.setLayout(step1Layout)
 
@@ -228,18 +250,13 @@ class AnnotationReviewer:
         self.fliplabelsVButton.clicked.connect(self.onFlipLabelsVertically)
         self.fliplabelsHButton.clicked.connect(self.onFlipLabelsHorizontally)
         self.swapXandYButton.clicked.connect(self.onSwapXandYLabels)
+        self.applyPreviousBoxesButton.clicked.connect(self.onApplyPreviousBoxes)
         self.acceptButton.clicked.connect(self.onApprovalKeyPressed)
-        self.rejectButton.clicked.connect(self.onStep1NextClicked)
-
-    def createStep2Widget(self):
-        self.detectionClassCheckBoxLayout = QGridLayout()
-        self.step2InstructionsLabel = QLabel("Review individual boxes")
-        self.detectionClassCheckBoxLayout.addWidget(self.step2InstructionsLabel, 0, 0, 1, -1)
-        self.step2Widget.setLayout(self.detectionClassCheckBoxLayout)
-        self.step2Widget.setVisible(False)
-
-    def createStep3Widget(self):
-        self.step3Widget.setVisible(False)
+        self.rejectButton.clicked.connect(self.deleteCurrentBox)
+        self.currentBoxSelector.currentIndexChanged.connect(self.updateCoordinateSliders)
+        self.xCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
+        self.yCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
+        self.addNewBoxButton.clicked.connect(self.addNewBox)
 
     def setupButtonConnections(self):
         self.selectImageDirButton.clicked.connect(self.onSelectImageDirectory)
@@ -383,8 +400,9 @@ class AnnotationReviewer:
             if "bounding box" in self.labelType:
                 self.labelFile[self.labelType] = [eval(str(self.labelFile[self.labelType][i])) for i in self.labelFile.index]
                 self.detectionLabels = self.getClassNames()
-                self.createDetectionCheckBoxes()
+                self.addClassesToNewBoxSelector()
                 self.blankSegmentationButton.setEnabled(False)
+                self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
             elif "segmentation" in self.labelFile[self.labelType][self.currentIndex]:
                 self.blankSegmentationButton.setEnabled(True)
                 self.setSegmentationImage(self.labelFile[self.labelType][self.currentIndex])
@@ -414,18 +432,34 @@ class AnnotationReviewer:
                     uniqueNames.append(bbox["class"])
         return sorted(uniqueNames)
 
+    def addClassesToNewBoxSelector(self):
+        self.addNewBoxSelector.addItems(self.detectionLabels)
+
+    def addNewBox(self):
+        newBoxClass = self.addNewBoxSelector.currentText()
+        self.labelFile[self.labelType][self.currentIndex].append({"class":newBoxClass,
+                                                             "xmin":(self.imgShape[1]//2)-50,
+                                                             "xmax":(self.imgShape[1]//2)+50,
+                                                             "ymin": (self.imgShape[0] // 2) - 50,
+                                                             "ymax": (self.imgShape[0] // 2) + 50})
+        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
+
     def createDetectionCheckBoxes(self):
         self.detectionCheckBoxes = {}
         self.detectionClassCheckBoxLayout.addWidget(QLabel("Present"),1,0)
-        self.detectionClassCheckBoxLayout.addWidget(QLabel("Missing"), 1, 1)
+        self.detectionClassCheckBoxLayout.addWidget(QLabel("Correct"), 1, 1)
+        self.checkBoxList = [[],[],[]]
         for i in range(len(self.detectionLabels)):
             label = self.detectionLabels[i]
             presentCheckBox = QCheckBox()
-            missingCheckBox = QCheckBox()
+            correctCheckBox = QCheckBox()
             classLabel = QLabel(label)
-            self.detectionCheckBoxes[label] = [presentCheckBox,missingCheckBox]
+            self.checkBoxList[0].append(label)
+            self.checkBoxList[1].append(presentCheckBox)
+            self.checkBoxList[2].append(correctCheckBox)
+            self.detectionCheckBoxes[label] = [presentCheckBox,correctCheckBox]
             self.detectionClassCheckBoxLayout.addWidget(presentCheckBox,i+2,0)
-            self.detectionClassCheckBoxLayout.addWidget(missingCheckBox,i+2,1)
+            self.detectionClassCheckBoxLayout.addWidget(correctCheckBox,i+2,1)
             self.detectionClassCheckBoxLayout.addWidget(classLabel, i + 2, 2)
         self.nextStepButton = QPushButton("Next")
         self.detectionClassCheckBoxLayout.addWidget(self.nextStepButton,len(self.detectionLabels)+2,2,1,2)
@@ -436,48 +470,116 @@ class AnnotationReviewer:
         img = cv2.imread(os.path.join(self.imageDirectory,self.labelFile["FileName"][self.currentIndex]))
         imgHeight = img.shape[0]
         for bbox in bboxes:
-            oldYmin = bbox["ymin"]
-            oldYmax = bbox["ymax"]
+            oldYmin = int(bbox["ymin"])
+            oldYmax = int(bbox["ymax"])
             bbox["ymin"] = imgHeight-oldYmax
             bbox["ymax"] = imgHeight-oldYmin
+            bbox["xmin"] = int(bbox["xmin"])
+            bbox["xmax"] = int(bbox["xmax"])
         self.labelFile[self.labelType][self.currentIndex] = bboxes
-        self.updateDetectionLabels()
+        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
 
     def onFlipLabelsHorizontally(self):
         bboxes = self.labelFile[self.labelType][self.currentIndex]
         img = cv2.imread(os.path.join(self.imageDirectory, self.labelFile["FileName"][self.currentIndex]))
         imgWidth = img.shape[1]
         for bbox in bboxes:
-            oldXmin = bbox["xmin"]
-            oldXmax = bbox["xmax"]
+            oldXmin = int(bbox["xmin"])
+            oldXmax = int(bbox["xmax"])
             bbox["xmin"] = imgWidth - oldXmax
             bbox["xmax"] = imgWidth - oldXmin
+            bbox["ymin"] = int(bbox["ymin"])
+            bbox["ymax"] = int(bbox["ymax"])
         self.labelFile[self.labelType][self.currentIndex] = bboxes
-        self.updateDetectionLabels()
+        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
 
     def onSwapXandYLabels(self):
         bboxes = self.labelFile[self.labelType][self.currentIndex]
         for bbox in bboxes:
-            oldXmin = bbox["xmin"]
-            oldXmax = bbox["xmax"]
-            oldYmin = bbox["ymin"]
-            oldYmax = bbox["ymax"]
+            oldXmin = int(bbox["xmin"])
+            oldXmax = int(bbox["xmax"])
+            oldYmin = int(bbox["ymin"])
+            oldYmax = int(bbox["ymax"])
             bbox["ymin"] = oldXmin
             bbox["ymax"] = oldXmax
             bbox["xmin"] = oldYmin
             bbox["xmax"] = oldYmax
         self.labelFile[self.labelType][self.currentIndex] = bboxes
-        self.updateDetectionLabels()
+        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
 
-    def onStep1NextClicked(self):
-        self.step1Widget.setVisible(False)
-        self.step2Widget.setVisible(True)
+    def onApplyPreviousBoxes(self):
+        boxesFound = False
+        ind = self.currentIndex-1
+        while ind >=0 and not boxesFound:
+            prevBoxes = [x.copy() for x in self.labelFile[self.labelType][ind]]
+            if len(prevBoxes)>0:
+                self.setImageWithDetections(prevBoxes)
+                boxesFound = True
+            ind-=1
+        if not boxesFound:
+            self.messageLabel.setText("Could not find previous boxes to apply")
 
-    def updateDetectionLabels(self,bboxes):
-        pass
+    def removeDuplicateBoxes(self,bboxes):
+        indsToRemove = []
+        for i in range(len(bboxes)):
+            for j in range(i,len(bboxes)):
+                if i!=j and bboxes[i]["class"]==bboxes[j]["class"] and not j in indsToRemove:
+                    if bboxes[i]["xmin"] == bboxes[j]["xmin"] and bboxes[i]["xmax"] == bboxes[j]["xmax"] and bboxes[i]["ymin"] == bboxes[j]["ymin"] and bboxes[i]["ymax"] == bboxes[j]["ymax"]:
+                        indsToRemove.append(j)
+        for i in range(len(indsToRemove)-1,-1,-1):
+            del bboxes[indsToRemove[i]]
+        return bboxes
 
-    def proceedToNextStepButton(self):
-        pass
+    def removeAllItems(self,comboBox):
+        for i in range(comboBox.count()-1,-1,-1):
+            comboBox.removeItem(i)
+
+    def updateDetectionLabels(self,bboxes,updateSliders=True):
+        self.bboxDictionary = {}
+        classCounts = {}
+        bboxes = self.removeDuplicateBoxes(bboxes)
+        self.labelFile[self.labelType][self.currentIndex] = bboxes
+        self.removeAllItems(self.currentBoxSelector)
+        for box in bboxes:
+            className = box["class"]
+            if not className in classCounts:
+                classCounts[className] = 1
+            else:
+                classCounts[className] += 1
+            boxName = "{} ({})".format(className,classCounts[className])
+            self.bboxDictionary[boxName] = box
+            self.currentBoxSelector.addItem(boxName)
+        if updateSliders:
+            self.updateCoordinateSliders()
+
+    def updateCoordinateSliders(self):
+        try:
+            currentBoxName = self.currentBoxSelector.currentText()
+            currentBox = self.bboxDictionary[currentBoxName]
+            self.xCoordinateSlider.blockSignals(True)
+            self.yCoordinateSlider.blockSignals(True)
+            self.xCoordinateSlider.setValue((int(currentBox["xmin"]),int(currentBox["xmax"])))
+            self.yCoordinateSlider.setValue((self.imgShape[0]-int(currentBox["ymax"]),self.imgShape[0]-int(currentBox["ymin"])))
+            self.xCoordinateSlider.blockSignals(False)
+            self.yCoordinateSlider.blockSignals(False)
+        except KeyError:
+            pass
+
+    def updateBBoxCoordinates(self):
+        currentBoxName = self.currentBoxSelector.currentText()
+        currentBox = self.bboxDictionary[currentBoxName]
+        xSliderValues = self.xCoordinateSlider.value()
+        ySliderValues = self.yCoordinateSlider.value()
+        currentBox["xmin"] = xSliderValues[0]
+        currentBox["xmax"] = xSliderValues[1]
+        currentBox["ymin"] = self.imgShape[0]-ySliderValues[1]
+        currentBox["ymax"] = self.imgShape[0]-ySliderValues[0]
+        self.setImageWithDetections([self.bboxDictionary[x] for x in self.bboxDictionary],updateSliders=False)
+
+    def deleteCurrentBox(self):
+        currentBoxName = self.currentBoxSelector.currentText()
+        del self.bboxDictionary[currentBoxName]
+        self.setImageWithDetections([self.bboxDictionary[x] for x in self.bboxDictionary])
 
     def updateLabel(self,indexValue):
         self.labelType = self.labelTypeSelectorComboBox.currentText()
@@ -487,15 +589,20 @@ class AnnotationReviewer:
                     self.labelSelectorComboBox.setCurrentText(self.labelFile[self.labelType][self.currentIndex])
                 except TypeError:
                     self.labelSelectorComboBox.setCurrentText("Bounding box")
+                    self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
                 if "segmentation" in self.labelFile[self.labelType][self.currentIndex]:
                     self.setSegmentationImage(self.labelFile[self.labelType][self.currentIndex])
-                if type(self.labelFile[self.labelType][self.currentIndex]) == "list":
-                    self.updateDetectionLabels(self.labelFile[self.labelType][self.currentIndex])
-                self.approvalStatus = self.videoStatus[self.labelType][self.currentIndex]
+                try:
+                    self.approvalStatus = self.videoStatus[self.labelType][self.currentIndex]
+                except KeyError:
+                    self.videoStatus = pandas.concat([self.videoStatus, pandas.DataFrame(dict(zip(self.videoStatus.columns,[[False] for x in self.videoStatus.columns])))])
+                    self.videoStatus.index = [x for x in range(len(self.videoStatus.index))]
+                    self.approvalStatus = self.videoStatus[self.labelType][len(self.videoStatus.index)-1]
                 if self.approvalStatus:
                     self.approvalCheckBox.setChecked(True)
                 else:
                     self.approvalCheckBox.setChecked(False)
+
             else:
                 label =self.labelSelectorComboBox.currentText()
                 if label != "Select label" and label!= "Add new label":
@@ -537,13 +644,39 @@ class AnnotationReviewer:
     def setImage(self,fileName=None):
         if fileName == None:
             image = numpy.zeros((480, 640, 3))
+            self.imgShape = image.shape
             height, width, channel = image.shape
             bytesPerLine = 3 * width
             qImage = QImage(image.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
             pixelmap = QPixmap.fromImage(qImage)
         else:
+            img = cv2.imread(os.path.join(self.imageDirectory, fileName))
+            self.imgShape = img.shape
             pixelmap = QPixmap(os.path.join(self.imageDirectory,fileName))
         self.imageLabel.setPixmap(pixelmap)
+
+    def setImageWithDetections(self,bboxes,updateSliders=True):
+        img = cv2.imread(os.path.join(self.imageDirectory,self.labelFile["FileName"][self.currentIndex]))
+        self.imgShape = img.shape
+        img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
+        #bboxes = self.labelFile[self.labelType][self.currentIndex]
+        for bbox in bboxes:
+            img = cv2.rectangle(img,(int(bbox["xmin"]),int(bbox["ymin"])),(int(bbox["xmax"]),int(bbox["ymax"])),(255,0,0),2)
+            cv2.putText(img,
+                        bbox["class"], (int(bbox["xmin"]), int(bbox["ymin"]) - 10),
+                        0,
+                        0.5,
+                        (255, 0, 0),
+                        thickness=1,
+                        lineType=cv2.LINE_AA)
+        height, width, channel = img.shape
+        bytesPerLine = 3 * width
+        qImage = QImage(img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+        pixelmap = QPixmap.fromImage(qImage)
+        self.imageLabel.setPixmap(pixelmap)
+        self.labelFile[self.labelType][self.currentIndex] = bboxes
+        if updateSliders:
+            self.updateDetectionLabels(bboxes,updateSliders)
 
     def onSliderMoved(self):
         self.currentIndex = self.imageSlider.value()
@@ -650,6 +783,7 @@ class AnnotationReviewer:
         self.setImage(self.labelFile["FileName"][self.currentIndex])
 
     def main(self):
+        self.imgShape = (480, 640, 3)
         app = QApplication([])
         window = QWidget()
         window.setWindowTitle("Annotation Reviewer")
