@@ -202,9 +202,10 @@ class AnnotationReviewer:
 
     def createStep1Widget(self):
         step1Layout = QVBoxLayout()
-        self.instructionLabel = QLabel("Step 1: Accept all boxes?")
         self.fliplabelsVButton = QPushButton("Flip boxes vertically")
         self.fliplabelsHButton = QPushButton("Flip boxes horizontally")
+        self.flipAllLabelsVButton = QPushButton("Flip all boxes vertically")
+        self.flipAllLabelsHButton = QPushButton("Flip all boxes horizontally")
         self.swapXandYButton = QPushButton("Swap X and Y coordinates")
         self.applyPreviousBoxesButton = QPushButton("Apply previous boxes")
         self.acceptDetectionLayout = QHBoxLayout()
@@ -212,9 +213,10 @@ class AnnotationReviewer:
         self.rejectButton = QPushButton("Delete current box")
         self.acceptDetectionLayout.addWidget(self.acceptButton)
         self.acceptDetectionLayout.addWidget(self.rejectButton)
-        step1Layout.addWidget(self.instructionLabel)
         step1Layout.addWidget(self.fliplabelsVButton)
+        step1Layout.addWidget(self.flipAllLabelsVButton)
         step1Layout.addWidget(self.fliplabelsHButton)
+        step1Layout.addWidget(self.flipAllLabelsHButton)
         step1Layout.addWidget(self.swapXandYButton)
         step1Layout.addWidget(self.applyPreviousBoxesButton)
 
@@ -233,7 +235,7 @@ class AnnotationReviewer:
 
         self.yCoordinateSliderLabel = QLabel("Y coordinates")
         self.detectionStep3Layout.addWidget(self.yCoordinateSliderLabel, 3, 0)
-        self.yCoordinateSlider = QRangeSlider()
+        self.yCoordinateSlider = QRangeSlider(Qt.Orientation.Horizontal)
         self.yCoordinateSlider.setMinimum(0)
         self.yCoordinateSlider.setMaximum(self.imgShape[0])
         self.detectionStep3Layout.addWidget(self.yCoordinateSlider, 3, 1)
@@ -249,6 +251,8 @@ class AnnotationReviewer:
         #connections
         self.fliplabelsVButton.clicked.connect(self.onFlipLabelsVertically)
         self.fliplabelsHButton.clicked.connect(self.onFlipLabelsHorizontally)
+        self.flipAllLabelsVButton.clicked.connect(self.onFlipAllLabelsVertically)
+        self.flipAllLabelsHButton.clicked.connect(self.onFlipAllLabelsHorizontally)
         self.swapXandYButton.clicked.connect(self.onSwapXandYLabels)
         self.applyPreviousBoxesButton.clicked.connect(self.onApplyPreviousBoxes)
         self.acceptButton.clicked.connect(self.onApprovalKeyPressed)
@@ -435,14 +439,37 @@ class AnnotationReviewer:
     def addClassesToNewBoxSelector(self):
         self.addNewBoxSelector.addItems(self.detectionLabels)
 
+    def findClosestBox(self,className):
+        bestBox = None
+        i = self.currentIndex
+        while i>max(0,self.currentIndex-10) and bestBox==None:
+            prevBBoxes = self.labelFile[self.labelType][i]
+            for box in prevBBoxes:
+                if box["class"] == className:
+                    bestBox = box.copy()
+            i-=1
+        if bestBox==None:
+            i = self.currentIndex
+            while i < min(len(self.labelFile.index), self.currentIndex + 10) and bestBox == None:
+                prevBBoxes = self.labelFile[self.labelType][i]
+                for box in prevBBoxes:
+                    if box["class"] == className:
+                        bestBox = box.copy()
+                i += 1
+        if bestBox == None:
+            bestBox = {"class":className,
+                       "xmin":(self.imgShape[1]//2)-50,
+                       "xmax":(self.imgShape[1]//2)+50,
+                       "ymin": (self.imgShape[0] // 2) - 50,
+                       "ymax": (self.imgShape[0] // 2) + 50}
+        return bestBox
+
     def addNewBox(self):
         newBoxClass = self.addNewBoxSelector.currentText()
-        self.labelFile[self.labelType][self.currentIndex].append({"class":newBoxClass,
-                                                             "xmin":(self.imgShape[1]//2)-50,
-                                                             "xmax":(self.imgShape[1]//2)+50,
-                                                             "ymin": (self.imgShape[0] // 2) - 50,
-                                                             "ymax": (self.imgShape[0] // 2) + 50})
+        closestBox = self.findClosestBox(newBoxClass)
+        self.labelFile[self.labelType][self.currentIndex].append(closestBox)
         self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
+        self.currentBoxSelector.setCurrentIndex(self.currentBoxSelector.count()-1)
 
     def createDetectionCheckBoxes(self):
         self.detectionCheckBoxes = {}
@@ -465,8 +492,10 @@ class AnnotationReviewer:
         self.detectionClassCheckBoxLayout.addWidget(self.nextStepButton,len(self.detectionLabels)+2,2,1,2)
         self.nextStepButton.clicked.connect(self.proceedToNextStepButton)
 
-    def onFlipLabelsVertically(self):
-        bboxes = self.labelFile[self.labelType][self.currentIndex]
+    def onFlipLabelsVertically(self,boxIndex = -1):
+        if boxIndex == -1:
+            boxIndex = self.currentIndex
+        bboxes = self.labelFile[self.labelType][boxIndex]
         img = cv2.imread(os.path.join(self.imageDirectory,self.labelFile["FileName"][self.currentIndex]))
         imgHeight = img.shape[0]
         for bbox in bboxes:
@@ -476,11 +505,21 @@ class AnnotationReviewer:
             bbox["ymax"] = imgHeight-oldYmin
             bbox["xmin"] = int(bbox["xmin"])
             bbox["xmax"] = int(bbox["xmax"])
-        self.labelFile[self.labelType][self.currentIndex] = bboxes
+        self.labelFile[self.labelType][boxIndex] = bboxes.copy()
         self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
 
-    def onFlipLabelsHorizontally(self):
-        bboxes = self.labelFile[self.labelType][self.currentIndex]
+    def onFlipAllLabelsVertically(self):
+        for i in self.labelFile.index:
+            self.onFlipLabelsVertically(boxIndex=i)
+
+    def onFlipAllLabelsHorizontally(self):
+        for i in self.labelFile.index:
+            self.onFlipLabelsHorizontally(boxIndex=i)
+
+    def onFlipLabelsHorizontally(self,boxIndex=-1):
+        if boxIndex == -1:
+            boxIndex = self.currentIndex
+        bboxes = self.labelFile[self.labelType][boxIndex]
         img = cv2.imread(os.path.join(self.imageDirectory, self.labelFile["FileName"][self.currentIndex]))
         imgWidth = img.shape[1]
         for bbox in bboxes:
@@ -490,7 +529,7 @@ class AnnotationReviewer:
             bbox["xmax"] = imgWidth - oldXmin
             bbox["ymin"] = int(bbox["ymin"])
             bbox["ymax"] = int(bbox["ymax"])
-        self.labelFile[self.labelType][self.currentIndex] = bboxes
+        self.labelFile[self.labelType][boxIndex] = bboxes.copy()
         self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
 
     def onSwapXandYLabels(self):
