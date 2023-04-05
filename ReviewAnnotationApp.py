@@ -6,13 +6,33 @@ import cv2
 import pandas
 import math
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QSpacerItem,QFileDialog,QTabWidget,QComboBox,QCheckBox,QSlider
+from PyQt6 import QtCore
+from PyQt6.QtCore import Qt,QPoint
+from PyQt6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QSpacerItem,QFileDialog,QTabWidget,QComboBox,QCheckBox,QSlider,QMainWindow
 from PyQt6.QtGui import QImage,QPixmap,QShortcut,QKeySequence
 from superqt import QRangeSlider
-class AnnotationReviewer:
-    def addWidgetsToWindow(self,window):
-        self.mainWindow = window
+
+class ImageLabel(QLabel):
+    def __init__(self,parent=None):
+        super(QLabel,self).__init__(parent)
+        self.setMouseTracking(False)
+
+
+class AnnotationReviewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.imgShape = (480, 640, 3)
+        self.cursorCoordinates = (0,0)
+        self.labelType = None
+        self.setMouseTracking(False)
+        self.setWindowTitle("Annotation Reviewer")
+        self.setGeometry(500, 200, 1250, 500)
+        self.addWidgetsToWindow()
+        self.setupButtonConnections()
+        self.show()
+
+    def addWidgetsToWindow(self):
+        #self.mainWindow = window
         titleMsg = QLabel("<h1>Annotation Reviewer<h1>")
         titleMsg.move(20, 20)
         mainLayout = QHBoxLayout()
@@ -53,7 +73,7 @@ class AnnotationReviewer:
         # Create Image layout
         #############################
         imageLayout = QVBoxLayout()
-        self.imageLabel = QLabel()
+        self.imageLabel = ImageLabel()
         image = numpy.zeros((480,640,3))
         height, width, channel = image.shape
         bytesPerLine = 3 * width
@@ -112,39 +132,39 @@ class AnnotationReviewer:
         labellayout.addWidget(self.transferImagesButton)
         mainLayout.addLayout(labellayout)
 
-        window.setLayout(mainLayout)
+        self.setLayout(mainLayout)
         self.setupHotkeys()
 
     def setupHotkeys(self):
-        saveShortcut = QShortcut(self.mainWindow)
+        saveShortcut = QShortcut(self)
         saveShortcut.setKey("Ctrl+s")
         saveShortcut.activated.connect(self.onSaveButtonClicked)
 
-        approveShortcut = QShortcut(self.mainWindow)
+        approveShortcut = QShortcut(self)
         approveShortcut.setKey("y")
         approveShortcut.activated.connect(self.onApprovalKeyPressed)
 
-        verticalFlipShortcut = QShortcut(self.mainWindow)
+        verticalFlipShortcut = QShortcut(self)
         verticalFlipShortcut.setKey("v")
         verticalFlipShortcut.activated.connect(self.flipImageVButton.click)
 
-        allVerticalFlipShortcut = QShortcut(self.mainWindow)
+        allVerticalFlipShortcut = QShortcut(self)
         allVerticalFlipShortcut.setKey("Ctrl+v")
         allVerticalFlipShortcut.activated.connect(self.flipAllVButton.click)
 
-        horizontalFlipShortcut = QShortcut(self.mainWindow)
+        horizontalFlipShortcut = QShortcut(self)
         horizontalFlipShortcut.setKey("h")
         horizontalFlipShortcut.activated.connect(self.flipImageHButton.click)
 
-        allhorizontalFlipShortcut = QShortcut(self.mainWindow)
+        allhorizontalFlipShortcut = QShortcut(self)
         allhorizontalFlipShortcut.setKey("Ctrl+h")
         allhorizontalFlipShortcut.activated.connect(self.flipAllHButton.click)
 
-        nextShortcut = QShortcut(self.mainWindow)
+        nextShortcut = QShortcut(self)
         nextShortcut.setKey("n")
         nextShortcut.activated.connect(self.nextButton.click)
 
-        previousShortcut = QShortcut(self.mainWindow)
+        previousShortcut = QShortcut(self)
         previousShortcut.setKey("p")
         previousShortcut.activated.connect(self.previousButton.click)
 
@@ -279,6 +299,58 @@ class AnnotationReviewer:
         self.approvalCheckBox.clicked.connect(self.approvalStatusChanged)
         self.selectCleanDirButton.clicked.connect(self.onSelectCleanDirectory)
         self.transferImagesButton.clicked.connect(self.onTransferImagesClicked)
+        #self.imageLabel.mousePressEvent.connect(self.onImageClicked)
+        #self.imageLabel.mouseReleaseEvent.connect(self.onImageClickReleased)
+
+    def mouseMoveEvent(self,event):
+        if "bounding box" in str(self.labelType):
+            cursorPosition = event.pos()
+            cursorPosition = (cursorPosition.x(),cursorPosition.y())
+            imageWidgetPosition = (self.imageLabel.x(),self.imageLabel.y())
+            imageXCoordinate = max(0,min(self.imgShape[1],cursorPosition[0]-imageWidgetPosition[0]))
+            imageYCoordinate = max(0,min(self.imgShape[0],cursorPosition[1]-imageWidgetPosition[1]))
+            boxName = self.currentBoxSelector.currentText()
+            bbox = self.bboxDictionary[boxName]
+            bbox["xmin"] = min(imageXCoordinate,bbox["xmin"])
+            bbox["ymin"] = min(imageYCoordinate,bbox["ymin"])
+            bbox["xmax"] = max(imageXCoordinate,bbox["xmax"])
+            bbox["ymax"] = max(imageYCoordinate,bbox["ymax"])
+            bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
+            self.setImageWithDetections(bboxes,updateSliders=False)
+
+    def mousePressEvent(self,event):
+        if "bounding box" in str(self.labelType):
+            cursorPosition = event.pos()
+            cursorPosition = (cursorPosition.x(), cursorPosition.y())
+            imageWidgetPosition = (self.imageLabel.x(), self.imageLabel.y())
+            imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
+            imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
+            boxName = self.currentBoxSelector.currentText()
+            bbox = self.bboxDictionary[boxName]
+            bbox["xmin"] = imageXCoordinate
+            bbox["ymin"] = imageYCoordinate
+            bbox["xmax"] = imageXCoordinate
+            bbox["ymax"] = imageYCoordinate
+            bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
+            self.setImageWithDetections(bboxes,updateSliders=False)
+
+    def mouseReleaseEvent(self,event):
+        if "bounding box" in str(self.labelType):
+            cursorPosition = event.pos()
+            cursorPosition = (cursorPosition.x(), cursorPosition.y())
+            imageWidgetPosition = (self.imageLabel.x(), self.imageLabel.y())
+            imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
+            imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
+            boxName = self.currentBoxSelector.currentText()
+            bbox = self.bboxDictionary[boxName]
+            bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
+            bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
+            bbox["xmax"] = max(imageXCoordinate, bbox["xmax"])
+            bbox["ymax"] = max(imageYCoordinate, bbox["ymax"])
+            bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
+            self.setImageWithDetections(bboxes)
+            ind = self.currentBoxSelector.findText(boxName)
+            self.currentBoxSelector.setCurrentIndex(ind)
 
     def onSelectImageDirectory(self):
         window = QWidget()
@@ -821,18 +893,8 @@ class AnnotationReviewer:
             cv2.imwrite(imagePath,image)
         self.setImage(self.labelFile["FileName"][self.currentIndex])
 
-    def main(self):
-        self.imgShape = (480, 640, 3)
-        app = QApplication([])
-        window = QWidget()
-        window.setWindowTitle("Annotation Reviewer")
-        window.setGeometry(500,200,1250,500)
-        self.addWidgetsToWindow(window)
-        self.setupButtonConnections()
-        window.show()
-        sys.exit(app.exec())
-
 
 if __name__ == "__main__":
-    app = AnnotationReviewer()
-    app.main()
+    app = QApplication([])
+    anReviewer = AnnotationReviewer()
+    sys.exit(app.exec())
