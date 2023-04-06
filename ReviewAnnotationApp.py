@@ -311,10 +311,10 @@ class AnnotationReviewer(QWidget):
             imageYCoordinate = max(0,min(self.imgShape[0],cursorPosition[1]-imageWidgetPosition[1]))
             boxName = self.currentBoxSelector.currentText()
             bbox = self.bboxDictionary[boxName]
-            bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
-            bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
-            bbox["xmax"] = max(imageXCoordinate, bbox["xmin"])
-            bbox["ymax"] = max(imageYCoordinate, bbox["ymin"])
+            bbox["xmin"] = min(imageXCoordinate, self.startingPoint[0])
+            bbox["ymin"] = min(imageYCoordinate, self.startingPoint[1])
+            bbox["xmax"] = max(imageXCoordinate, self.startingPoint[0])
+            bbox["ymax"] = max(imageYCoordinate, self.startingPoint[1])
             bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
             self.setImageWithDetections(bboxes,updateSliders=False)
 
@@ -325,8 +325,10 @@ class AnnotationReviewer(QWidget):
             imageWidgetPosition = (self.imageLabel.x(), self.imageLabel.y())
             if cursorPosition[0] - imageWidgetPosition[0] >= 0 and cursorPosition[0] - imageWidgetPosition[0] <= self.imgShape[1] and cursorPosition[1] - imageWidgetPosition[1] >= 0 and cursorPosition[1] - imageWidgetPosition[1] <= self.imgShape[0]:
                 self.modifyBBoxStarted = True
+
                 imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
                 imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
+                self.startingPoint = (imageXCoordinate,imageYCoordinate)
                 boxName = self.currentBoxSelector.currentText()
                 bbox = self.bboxDictionary[boxName]
                 bbox["xmin"] = imageXCoordinate
@@ -347,10 +349,10 @@ class AnnotationReviewer(QWidget):
                 imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
                 boxName = self.currentBoxSelector.currentText()
                 bbox = self.bboxDictionary[boxName]
-                bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
-                bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
-                bbox["xmax"] = max(imageXCoordinate, bbox["xmin"])
-                bbox["ymax"] = max(imageYCoordinate, bbox["ymin"])
+                bbox["xmin"] = min(imageXCoordinate, self.startingPoint[0])
+                bbox["ymin"] = min(imageYCoordinate, self.startingPoint[1])
+                bbox["xmax"] = max(imageXCoordinate, self.startingPoint[0])
+                bbox["ymax"] = max(imageYCoordinate, self.startingPoint[1])
                 bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
                 self.setImageWithDetections(bboxes)
                 ind = self.currentBoxSelector.findText(boxName)
@@ -705,8 +707,11 @@ class AnnotationReviewer(QWidget):
 
     def deleteCurrentBox(self):
         currentBoxName = self.currentBoxSelector.currentText()
-        del self.bboxDictionary[currentBoxName]
-        self.setImageWithDetections([self.bboxDictionary[x] for x in self.bboxDictionary])
+        try:
+            del self.bboxDictionary[currentBoxName]
+            self.setImageWithDetections([self.bboxDictionary[x] for x in self.bboxDictionary])
+        except KeyError:
+            pass
 
     def updateLabel(self,indexValue):
         self.labelType = self.labelTypeSelectorComboBox.currentText()
