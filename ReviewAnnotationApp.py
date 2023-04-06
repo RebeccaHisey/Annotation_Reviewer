@@ -303,7 +303,7 @@ class AnnotationReviewer(QWidget):
         #self.imageLabel.mouseReleaseEvent.connect(self.onImageClickReleased)
 
     def mouseMoveEvent(self,event):
-        if "bounding box" in str(self.labelType):
+        if "bounding box" in str(self.labelType) and self.modifyBBoxStarted:
             cursorPosition = event.pos()
             cursorPosition = (cursorPosition.x(),cursorPosition.y())
             imageWidgetPosition = (self.imageLabel.x(),self.imageLabel.y())
@@ -311,10 +311,10 @@ class AnnotationReviewer(QWidget):
             imageYCoordinate = max(0,min(self.imgShape[0],cursorPosition[1]-imageWidgetPosition[1]))
             boxName = self.currentBoxSelector.currentText()
             bbox = self.bboxDictionary[boxName]
-            bbox["xmin"] = min(imageXCoordinate,bbox["xmin"])
-            bbox["ymin"] = min(imageYCoordinate,bbox["ymin"])
-            bbox["xmax"] = max(imageXCoordinate,bbox["xmax"])
-            bbox["ymax"] = max(imageYCoordinate,bbox["ymax"])
+            bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
+            bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
+            bbox["xmax"] = max(imageXCoordinate, bbox["xmin"])
+            bbox["ymax"] = max(imageYCoordinate, bbox["ymin"])
             bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
             self.setImageWithDetections(bboxes,updateSliders=False)
 
@@ -323,34 +323,48 @@ class AnnotationReviewer(QWidget):
             cursorPosition = event.pos()
             cursorPosition = (cursorPosition.x(), cursorPosition.y())
             imageWidgetPosition = (self.imageLabel.x(), self.imageLabel.y())
-            imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
-            imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
-            boxName = self.currentBoxSelector.currentText()
-            bbox = self.bboxDictionary[boxName]
-            bbox["xmin"] = imageXCoordinate
-            bbox["ymin"] = imageYCoordinate
-            bbox["xmax"] = imageXCoordinate
-            bbox["ymax"] = imageYCoordinate
-            bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
-            self.setImageWithDetections(bboxes,updateSliders=False)
+            if cursorPosition[0] - imageWidgetPosition[0] >= 0 and cursorPosition[0] - imageWidgetPosition[0] <= self.imgShape[1] and cursorPosition[1] - imageWidgetPosition[1] >= 0 and cursorPosition[1] - imageWidgetPosition[1] <= self.imgShape[0]:
+                self.modifyBBoxStarted = True
+                imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
+                imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
+                boxName = self.currentBoxSelector.currentText()
+                bbox = self.bboxDictionary[boxName]
+                bbox["xmin"] = imageXCoordinate
+                bbox["ymin"] = imageYCoordinate
+                bbox["xmax"] = imageXCoordinate
+                bbox["ymax"] = imageYCoordinate
+                bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
+                self.setImageWithDetections(bboxes,updateSliders=False)
 
     def mouseReleaseEvent(self,event):
         if "bounding box" in str(self.labelType):
             cursorPosition = event.pos()
             cursorPosition = (cursorPosition.x(), cursorPosition.y())
             imageWidgetPosition = (self.imageLabel.x(), self.imageLabel.y())
-            imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
-            imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
-            boxName = self.currentBoxSelector.currentText()
-            bbox = self.bboxDictionary[boxName]
-            bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
-            bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
-            bbox["xmax"] = max(imageXCoordinate, bbox["xmax"])
-            bbox["ymax"] = max(imageYCoordinate, bbox["ymax"])
-            bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
-            self.setImageWithDetections(bboxes)
-            ind = self.currentBoxSelector.findText(boxName)
-            self.currentBoxSelector.setCurrentIndex(ind)
+            if cursorPosition[0] - imageWidgetPosition[0] >= 0 and cursorPosition[0] - imageWidgetPosition[0] <= self.imgShape[1] and cursorPosition[1] - imageWidgetPosition[1] >= 0 and cursorPosition[1] - imageWidgetPosition[1] <= self.imgShape[0]:
+                self.modifyBBoxStarted = False
+                imageXCoordinate = max(0, min(self.imgShape[1], cursorPosition[0] - imageWidgetPosition[0]))
+                imageYCoordinate = max(0, min(self.imgShape[0], cursorPosition[1] - imageWidgetPosition[1]))
+                boxName = self.currentBoxSelector.currentText()
+                bbox = self.bboxDictionary[boxName]
+                bbox["xmin"] = min(imageXCoordinate, bbox["xmin"])
+                bbox["ymin"] = min(imageYCoordinate, bbox["ymin"])
+                bbox["xmax"] = max(imageXCoordinate, bbox["xmin"])
+                bbox["ymax"] = max(imageYCoordinate, bbox["ymin"])
+                bboxes = [self.bboxDictionary[x] for x in self.bboxDictionary]
+                self.setImageWithDetections(bboxes)
+                ind = self.currentBoxSelector.findText(boxName)
+                self.currentBoxSelector.setCurrentIndex(ind)
+
+    def checkForMissingImages(self):
+        indexesToRemove = []
+        for i in self.labelFile.index:
+            imagePath = os.path.join(self.imageDirectory, self.labelFile["FileName"][i])
+            if not os.path.exists(imagePath):
+                indexesToRemove.append(i)
+        self.labelFile = self.labelFile.drop(indexesToRemove)
+        self.labelFile.index = [i for i in range(len(self.labelFile.index))]
+
 
     def onSelectImageDirectory(self):
         window = QWidget()
@@ -367,6 +381,7 @@ class AnnotationReviewer(QWidget):
             self.videoID = videoId
             self.subtype = subtype
             self.labelFile = pandas.read_csv(os.path.join(self.imageDirectory,"{}_{}_Labels.csv".format(videoId,subtype)))
+            self.checkForMissingImages()
             self.imageSlider.setMinimum(0)
             self.imageSlider.setMaximum(len(self.labelFile.index)-1)
             self.imageDirectoryLabel.setText("Image Directory: \n{}".format(self.imageDirectory))
@@ -382,6 +397,7 @@ class AnnotationReviewer(QWidget):
             self.nextButton.setEnabled(True)
             self.imageSlider.setEnabled(True)
             self.labelFile = pandas.read_csv(os.path.join(self.imageDirectory, "{}_Labels.csv".format(subtype)))
+            self.checkForMissingImages()
             self.imageSlider.setMinimum(0)
             self.imageSlider.setMaximum(len(self.labelFile.index)-1)
             self.imageDirectoryLabel.setText("Image Directory: \n\n{}".format(self.imageDirectory))
@@ -872,10 +888,13 @@ class AnnotationReviewer(QWidget):
 
     def onFlipAllImageHClicked(self):
         for i in self.labelFile.index:
-            imagePath = os.path.join(self.imageDirectory,self.labelFile["FileName"][i])
-            image = cv2.imread(imagePath)
-            image = cv2.flip(image, 1)
-            cv2.imwrite(imagePath,image)
+            if os.path.exists(imagePath):
+                imagePath = os.path.join(self.imageDirectory,self.labelFile["FileName"][i])
+                image = cv2.imread(imagePath)
+                image = cv2.flip(image, 1)
+                cv2.imwrite(imagePath,image)
+            else:
+                self.labelFile.drop([i])
         self.setImage(self.labelFile["FileName"][self.currentIndex])
 
     def onFlipImageVClicked(self):
@@ -888,9 +907,12 @@ class AnnotationReviewer(QWidget):
     def onFlipAllImageVClicked(self):
         for i in self.labelFile.index:
             imagePath = os.path.join(self.imageDirectory, self.labelFile["FileName"][i])
-            image = cv2.imread(imagePath)
-            image = cv2.flip(image, 0)
-            cv2.imwrite(imagePath,image)
+            if os.path.exists(imagePath):
+                image = cv2.imread(imagePath)
+                image = cv2.flip(image, 0)
+                cv2.imwrite(imagePath,image)
+            else:
+                self.labelFile.drop([i])
         self.setImage(self.labelFile["FileName"][self.currentIndex])
 
 
