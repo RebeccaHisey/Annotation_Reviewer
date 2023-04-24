@@ -8,7 +8,7 @@ import math
 
 from PyQt6 import QtCore
 from PyQt6.QtCore import Qt,QPoint
-from PyQt6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QSpacerItem,QFileDialog,QTabWidget,QComboBox,QCheckBox,QSlider,QMainWindow
+from PyQt6.QtWidgets import QApplication,QLabel,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QPushButton,QSpacerItem,QFileDialog,QTabWidget,QComboBox,QCheckBox,QSlider,QMainWindow,QLineEdit
 from PyQt6.QtGui import QImage,QPixmap,QShortcut,QKeySequence
 from superqt import QRangeSlider
 
@@ -264,6 +264,14 @@ class AnnotationReviewer(QWidget):
         self.detectionStep3Layout.addWidget(self.addNewBoxButton,4,0)
         self.addNewBoxSelector = QComboBox()
         self.detectionStep3Layout.addWidget(self.addNewBoxSelector,4,1)
+        self.addNewBoxSelector.addItems(["Add new class"])
+
+        self.addNewClassButton = QPushButton("Add new class")
+        self.newClassLineEdit = QLineEdit("Class name")
+        self.newClassLineEdit.visible = False
+        self.addNewClassButton.visible = False
+        self.detectionStep3Layout.addWidget(self.addNewClassButton, 5, 0)
+        self.detectionStep3Layout.addWidget(self.newClassLineEdit, 5, 1)
         step1Layout.addLayout(self.detectionStep3Layout)
         step1Layout.addLayout(self.acceptDetectionLayout)
         self.step1Widget.setLayout(step1Layout)
@@ -281,6 +289,8 @@ class AnnotationReviewer(QWidget):
         self.xCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
         self.yCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
         self.addNewBoxButton.clicked.connect(self.addNewBox)
+        self.addNewBoxSelector.currentIndexChanged.connect(self.newClassSelected)
+        self.addNewClassButton.clicked.connect(self.addNewClassesToNewBoxSelector)
 
     def setupButtonConnections(self):
         self.selectImageDirButton.clicked.connect(self.onSelectImageDirectory)
@@ -476,6 +486,17 @@ class AnnotationReviewer(QWidget):
                     self.videoStatus[col] = [False for i in self.labelFile.index]
         else:
             self.videoStatus = pandas.read_csv(self.videoStatusPath)
+            if len(self.videoStatus.index) > len(self.labelFile.index):
+                indexesToRemove = [x for x in self.videoStatus.index if not x in self.labelFile.index]
+                self.videoStatus = self.videoStatus.drop(indexesToRemove)
+            elif len(self.videoStatus.index) < len(self.labelFile.index):
+                indexesToAdd = len([x for x in self.labelFile.index if not x in self.videoStatus.index])
+                rowsToAdd = {}
+                for col in self.labelFile.columns:
+                    if col != "FileName" and col != "Time Recorded" and not "Unnamed" in col:
+                        rowsToAdd[col] = [False for i in range(indexesToAdd)]
+                self.videoStatus = pandas.concat([self.videoStatus,pandas.DataFrame(rowsToAdd)])
+                self.videoStatus.index = [i for i in range(len(self.videoStatus.index))]
 
 
     def updateLabelUI(self):
@@ -529,6 +550,11 @@ class AnnotationReviewer(QWidget):
     def addClassesToNewBoxSelector(self):
         self.addNewBoxSelector.addItems(self.detectionLabels)
 
+    def addNewClassesToNewBoxSelector(self):
+        if not self.newClassLineEdit.text() == "Class name":
+            self.addNewBoxSelector.addItems([str(self.newClassLineEdit.text())])
+            self.addNewBoxSelector.setCurrentText(self.newClassLineEdit.text())
+
     def findClosestBox(self,className):
         bestBox = None
         i = self.currentIndex
@@ -560,6 +586,14 @@ class AnnotationReviewer(QWidget):
         self.labelFile[self.labelType][self.currentIndex].append(closestBox)
         self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
         self.currentBoxSelector.setCurrentIndex(self.currentBoxSelector.count()-1)
+
+    def newClassSelected(self):
+        if self.addNewBoxSelector.currentText() == "Add new class":
+            self.newClassLineEdit.visible = True
+            self.addNewClassButton.visible = True
+        else:
+            self.newClassLineEdit.visible = False
+            self.addNewClassButton.visible = False
 
     def createDetectionCheckBoxes(self):
         self.detectionCheckBoxes = {}
