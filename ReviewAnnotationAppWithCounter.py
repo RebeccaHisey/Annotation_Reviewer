@@ -942,11 +942,21 @@ class AnnotationReviewer(QWidget):
 
     def onSaveButtonClicked(self):
         if self.subtype == None:
-            self.labelFile.to_csv(os.path.join(self.imageDirectory,"{}_Labels.csv".format(self.videoID)),index=False)
+            labelFilePath = os.path.join(self.imageDirectory,"{}_Labels.csv".format(self.videoID))
+
         else:
-            self.labelFile.to_csv(os.path.join(self.imageDirectory, "{}_{}_Labels.csv".format(self.videoID,self.subtype)),index=False)
+            labelFilePath = os.path.join(self.imageDirectory, "{}_{}_Labels.csv".format(self.videoID,self.subtype))
+
+        try:
+            self.labelFile.to_csv(labelFilePath, index=False)
+            self.messageLabel.setText("Changes saved")
+        except:
+            tempFilePath = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.basename(labelFilePath))
+            self.messageLabel.setText("Permission denied on {}\nSaving copy to: {}".format(labelFilePath, tempFilePath))
         self.videoStatus.to_csv(self.videoStatusPath, index=False)
-        self.messageLabel.setText("Changes saved")
+
+
+
 
     def onRepairGlitchesClicked(self):
         numGlitches = 0
