@@ -636,8 +636,11 @@ class AnnotationReviewer(QWidget):
         FIX_COUNTER["Missing box"][FIX_COUNTER.index[-1]] += 1
         newBoxClass = self.addNewBoxSelector.currentText()
         closestBox = self.findClosestBox(newBoxClass)
+        if str(closestBox) in str(self.labelFile[self.labelType][self.currentIndex]):
+            closestBox["xmin"] +=1
+            closestBox["ymin"] +=1
         self.labelFile[self.labelType][self.currentIndex].append(closestBox)
-        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex])
+        self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex].copy())
         self.currentBoxSelector.setCurrentIndex(self.currentBoxSelector.count()-1)
 
     def newClassSelected(self):
@@ -901,7 +904,8 @@ class AnnotationReviewer(QWidget):
         qImage = QImage(img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixelmap = QPixmap.fromImage(qImage)
         self.imageLabel.setPixmap(pixelmap)
-        self.labelFile[self.labelType][self.currentIndex] = bboxes
+        self.labelFile[self.labelType][self.currentIndex] = bbox
+        print(self.labelFile[self.labelType][self.currentIndex])
         if updateSliders:
             self.updateDetectionLabels(bboxes,updateSliders)
 
