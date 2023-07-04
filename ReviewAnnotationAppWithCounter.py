@@ -594,9 +594,13 @@ class AnnotationReviewer(QWidget):
         uniqueNames = []
         for i in self.labelFile.index:
             bboxes = self.labelFile[self.labelType][i]
+            if isinstance(bboxes,dict):
+                bboxes = [bboxes]
+                self.labelFile[self.labelType][i] = bboxes
             for bbox in bboxes:
                 if not bbox["class"] in uniqueNames:
                     uniqueNames.append(bbox["class"])
+                    
         return sorted(uniqueNames)
 
     def addClassesToNewBoxSelector(self):
@@ -639,7 +643,9 @@ class AnnotationReviewer(QWidget):
         if str(closestBox) in str(self.labelFile[self.labelType][self.currentIndex]):
             closestBox["xmin"] +=1
             closestBox["ymin"] +=1
+        print(self.labelFile[self.labelType][self.currentIndex])
         self.labelFile[self.labelType][self.currentIndex].append(closestBox)
+        print(self.labelFile[self.labelType][self.currentIndex])
         self.setImageWithDetections(self.labelFile[self.labelType][self.currentIndex].copy())
         self.currentBoxSelector.setCurrentIndex(self.currentBoxSelector.count()-1)
 
@@ -890,6 +896,8 @@ class AnnotationReviewer(QWidget):
         self.imgShape = img.shape
         img = cv2.cvtColor(img,cv2.COLOR_BGR2RGB)
         #bboxes = self.labelFile[self.labelType][self.currentIndex]
+        if isinstance(bboxes,dict):
+            bboxes = [bboxes]
         for bbox in bboxes:
             img = cv2.rectangle(img,(int(bbox["xmin"]),int(bbox["ymin"])),(int(bbox["xmax"]),int(bbox["ymax"])),(255,0,0),2)
             cv2.putText(img,
@@ -904,7 +912,7 @@ class AnnotationReviewer(QWidget):
         qImage = QImage(img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixelmap = QPixmap.fromImage(qImage)
         self.imageLabel.setPixmap(pixelmap)
-        self.labelFile[self.labelType][self.currentIndex] = bbox
+        self.labelFile[self.labelType][self.currentIndex] = bboxes
         print(self.labelFile[self.labelType][self.currentIndex])
         if updateSliders:
             self.updateDetectionLabels(bboxes,updateSliders)
