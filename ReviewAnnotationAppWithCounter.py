@@ -308,7 +308,9 @@ class AnnotationReviewer(QWidget):
         self.rejectButton.clicked.connect(self.deleteCurrentBox)
         self.currentBoxSelector.currentIndexChanged.connect(self.updateCoordinateSliders)
         self.xCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
+        self.xCoordinateSlider.sliderReleased.connect(self.updateEditCount)
         self.yCoordinateSlider.sliderMoved.connect(self.updateBBoxCoordinates)
+        self.yCoordinateSlider.sliderReleased.connect(self.updateEditCount)
         self.addNewBoxButton.clicked.connect(self.addNewBox)
         self.addNewBoxSelector.currentIndexChanged.connect(self.newClassSelected)
         self.addNewClassButton.clicked.connect(self.addNewClassesToNewBoxSelector)
@@ -795,7 +797,7 @@ class AnnotationReviewer(QWidget):
             pass
 
     def updateBBoxCoordinates(self):
-        FIX_COUNTER["Edit box"][FIX_COUNTER.index[-1]] += 1
+        #FIX_COUNTER["Edit box"][FIX_COUNTER.index[-1]] += 1
         currentBoxName = self.currentBoxSelector.currentText()
         currentBox = self.bboxDictionary[currentBoxName]
         xSliderValues = self.xCoordinateSlider.value()
@@ -805,6 +807,9 @@ class AnnotationReviewer(QWidget):
         currentBox["ymin"] = self.imgShape[0]-ySliderValues[1]
         currentBox["ymax"] = self.imgShape[0]-ySliderValues[0]
         self.setImageWithDetections([self.bboxDictionary[x] for x in self.bboxDictionary],updateSliders=False)
+        
+    def updateEditCount(self):
+        FIX_COUNTER["Edit box"][FIX_COUNTER.index[-1]] += 1
 
     def deleteCurrentBox(self):
         FIX_COUNTER["Edit box"][FIX_COUNTER.index[-1]] += 1
