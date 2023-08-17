@@ -61,6 +61,19 @@ class AnnotationReviewer(QWidget):
         self.imageDirectoryLabel = QLabel("Image Directory: ")
         layout.addWidget(self.imageDirectoryLabel)
         layout.addItem(QSpacerItem(100, 20))
+        
+        self.detectionStep4Layout = QGridLayout()
+        self.addNewLabelButton = QPushButton("Add new label")
+        #layout.addWidget(self.addNewLabelButton)
+        self.newLabelLineEdit = QLineEdit("Label name")
+        #layout.addWidget(self.newLabelLineEdit)
+        self.newLabelLineEdit.visible = False
+        self.addNewLabelButton.visible = False
+        self.detectionStep4Layout.addWidget(self.addNewLabelButton, 6, 0)
+        self.detectionStep4Layout.addWidget(self.newLabelLineEdit, 6, 1)
+        layout.addLayout(self.detectionStep4Layout)
+        layout.addItem(QSpacerItem(100, 20))
+        
         self.removeAndRepairButton = QPushButton("Remove and Repair Glitches")
         layout.addWidget(self.removeAndRepairButton)
         layout.addItem(QSpacerItem(100, 20))
@@ -334,6 +347,8 @@ class AnnotationReviewer(QWidget):
             self.newClassSelected)
         self.addNewClassButton.clicked.connect(
             self.addNewClassesToNewBoxSelector)
+        self.addNewLabelButton.clicked.connect(
+            self.addNewLabelToFile)
 
     def setupButtonConnections(self):
         self.selectImageDirButton.clicked.connect(self.onSelectImageDirectory)
@@ -683,6 +698,12 @@ class AnnotationReviewer(QWidget):
                 [str(self.newClassLineEdit.text())])
             self.addNewBoxSelector.setCurrentText(self.newClassLineEdit.text())
 
+    def addNewLabelToFile(self): 
+        if not self.newLabelLineEdit.text() == "Label name":
+            self.addNewBoxSelector.addItems(
+                [str(self.newLabelLineEdit.text())])
+            self.addNewBoxSelector.setCurrentText(self.newLabelLineEdit.text())
+    
     def findClosestBox(self, className):
         bestBox = None
         i = self.currentIndex
