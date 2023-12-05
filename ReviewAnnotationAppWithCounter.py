@@ -61,6 +61,17 @@ class AnnotationReviewer(QWidget):
         self.imageDirectoryLabel = QLabel("Image Directory: ")
         layout.addWidget(self.imageDirectoryLabel)
         layout.addItem(QSpacerItem(100, 20))
+
+        self.addNewLabelWidgetLayout = QGridLayout()
+        self.addNewLabelButton = QPushButton("Add new label")
+        self.newLabelLineEdit = QLineEdit("Label name")
+        self.newLabelLineEdit.visible = False
+        self.addNewLabelButton.visible = False
+        self.addNewLabelWidgetLayout.addWidget(self.addNewLabelButton, 6, 0)
+        self.addNewLabelWidgetLayout.addWidget(self.newLabelLineEdit, 6, 1)
+        layout.addLayout(self.addNewLabelWidgetLayout)
+        layout.addItem(QSpacerItem(100, 20))
+
         self.removeAndRepairButton = QPushButton("Remove and Repair Glitches")
         layout.addWidget(self.removeAndRepairButton)
         layout.addItem(QSpacerItem(100, 20))
@@ -115,8 +126,10 @@ class AnnotationReviewer(QWidget):
         #############################
         labellayout = QVBoxLayout()
         self.labelTypeSelectorComboBox = QComboBox()
-        self.labelTypeSelectorComboBox.addItem("Select label type")
+        self.labelTypeSelectorComboBox.addItems(["Select label type"])
         labellayout.addWidget(self.labelTypeSelectorComboBox)
+        self.setupLabelTypeToolLayout()
+
         self.labelToolTabWidget = QTabWidget()
         self.classificationToolWidget = QWidget()
         classificationLayout = QVBoxLayout()
@@ -184,6 +197,29 @@ class AnnotationReviewer(QWidget):
         previousShortcut = QShortcut(self)
         previousShortcut.setKey("p")
         previousShortcut.activated.connect(self.previousButton.click)
+
+    def setupLabelTypeToolLayout(self):
+        self.labelTypeSelectorComboBox.currentIndexChanged.connect(
+            self.newLabelSelected)
+        self.addNewLabelButton.clicked.connect(
+            self.addNewLabelToFile)
+
+    def addNewLabelToFile(self): 
+        if not self.newLabelLineEdit.text() == "Label name":
+            self.labelFile[self.newLabelLineEdit.text()]=["[]" for i in self.labelFile.index]
+            
+            self.labelTypeSelectorComboBox.addItems(
+                [str(self.newLabelLineEdit.text())])
+            self.labelTypeSelectorComboBox.setCurrentText(self.newLabelLineEdit.text())       
+
+    
+    def newLabelSelected(self):
+        if self.labelTypeSelectorComboBox.currentText() == "Select label type":
+            self.newLabelLineEdit.visible = True
+            self.addNewLabelButton.visible = True
+        else:
+            self.newLabelLineEdit.visible = False
+            self.addNewLabelButton.visible = False
 
     def setupClassificationToolLayout(self, layout):
 
@@ -479,6 +515,7 @@ class AnnotationReviewer(QWidget):
                 writer.writerow(header)
                 writer.writerows([[jpgFile] for jpgFile in listJpgFiles])
         if os.path.exists(file):
+            #print("foundLabelFile")
             self.previousButton.setEnabled(True)
             self.nextButton.setEnabled(True)
             self.imageSlider.setEnabled(True)
@@ -495,8 +532,8 @@ class AnnotationReviewer(QWidget):
             FIX_COUNTER["Total"][FIX_COUNTER.index[-1]
                                  ] = len(self.labelFile.index)
             self.currentIndex = 0
-            self.updateLabelUI()
             self.getReviewStatus()
+            self.updateLabelUI()
         elif os.path.exists(os.path.join(self.imageDirectory, "{}_Labels.csv".format(subtype))):
             self.videoID = subtype
             self.subtype = None
@@ -592,6 +629,7 @@ class AnnotationReviewer(QWidget):
                 self.videoID)
         self.videoStatusPath = os.path.join(
             currentPath, "ReviewStatuses", vidReviewStatusFileName)
+        print(self.videoStatusPath)
         if not os.path.exists(self.videoStatusPath):
             self.videoStatus = pandas.DataFrame()
             for col in self.labelFile.columns:
@@ -656,7 +694,7 @@ class AnnotationReviewer(QWidget):
                     self.approvalCheckBox.setChecked(False)
             except KeyError:
                 self.videoStatus[self.labelType] = [
-                    False for i in self.videoStatus.index]
+                    False for i in self.labelFile.index]
                 self.approvalStatus = False
                 self.approvalCheckBox.setChecked(False)
             self.updateApprovalStatusLabel()
@@ -955,7 +993,11 @@ class AnnotationReviewer(QWidget):
         self.updateApprovalStatusLabel()
 
     def updateApprovalStatusLabel(self):
+        if not self.labelType in self.videoStatus.columns:
+            print("her")
+            self.videoStatus[self.labelType] = [False for i in self.videoStatus.index]
         approvalCounts = self.videoStatus[self.labelType].value_counts()
+        print(self.videoStatus.index)
         if len(approvalCounts.index) == 1:
             try:
                 self.numRemaining = approvalCounts[False]
@@ -1026,6 +1068,7 @@ class AnnotationReviewer(QWidget):
         elif self.currentIndex == self.imageSlider.maximum():
             self.nextButton.setEnabled(False)
             self.previousButton.setEnabled(True)
+        print(self.labelFile["FileName"])
         self.setImage(self.labelFile["FileName"][self.currentIndex])
         self.updateLabel(indexValue=-1)
 
